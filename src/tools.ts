@@ -82,10 +82,22 @@ export function registerBugcrowdTools(
     server.registerTool(
       name,
       {
+        title: name
+          .split("_")
+          .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(" "),
         description,
         inputSchema: z.object(inputSchema),
+        securitySchemes: [{ type: "oauth2", scopes: ["bugcrowd"] }],
         _meta: {
+          // Back-compat mirror required by older ChatGPT/App SDK clients.
           securitySchemes: [{ type: "oauth2", scopes: ["bugcrowd"] }],
+        },
+        annotations: {
+          readOnlyHint: !["create_submission", "update_submission", "bugcrowd_api_request"].includes(name),
+          destructiveHint: name === "bugcrowd_api_request",
+          idempotentHint: false,
+          openWorldHint: true,
         },
       },
       async (params: any) => {
@@ -101,6 +113,7 @@ export function registerBugcrowdTools(
   server.registerTool(
     "get_public_engagement",
     {
+      title: "Get Public Engagement",
       description:
         "Fetch a public Bugcrowd engagement page by slug without account authentication. Use this first for public bounty policy/scope context such as slug 'openai'.",
       inputSchema: z.object({
@@ -111,6 +124,17 @@ export function registerBugcrowdTools(
             "Public Bugcrowd engagement slug from /engagements/<slug>, for example openai."
           ),
       }),
+      securitySchemes: [{ type: "noauth" }],
+      _meta: {
+        // Back-compat mirror required by older ChatGPT/App SDK clients.
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
     },
     async ({ slug }: { slug: string }) => {
       try {
