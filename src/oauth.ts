@@ -20,6 +20,20 @@ export const OAUTH_RESOURCE =
 export const PROTECTED_RESOURCE_METADATA_URL =
   `${OAUTH_ISSUER}/.well-known/oauth-protected-resource`;
 
+export function oauthIssuerForOrigin(origin?: string) {
+  const configured = process.env.OAUTH_ISSUER?.trim();
+  return (configured || origin || OAUTH_ISSUER).replace(/\/+$/, "");
+}
+
+export function oauthResourceForOrigin(origin?: string) {
+  const configured = process.env.OAUTH_RESOURCE?.trim();
+  return configured || `${oauthIssuerForOrigin(origin)}/api/mcp`;
+}
+
+export function protectedResourceMetadataUrlForOrigin(origin?: string) {
+  return `${oauthIssuerForOrigin(origin)}/.well-known/oauth-protected-resource`;
+}
+
 export const OAUTH_SCOPE = "bugcrowd";
 export const OFFLINE_SCOPE = "offline_access";
 
@@ -102,10 +116,11 @@ export async function createAccessToken(input: OAuthGrant) {
 }
 
 export async function resolveAccessToken(
-  token: string
+  token: string,
+  expectedResource = OAUTH_RESOURCE
 ): Promise<BugcrowdCredentials> {
   const payload = await getRecord<OAuthGrant>("access", token);
-  if (payload.resource !== OAUTH_RESOURCE) {
+  if (payload.resource !== expectedResource) {
     throw new Error("OAuth token audience does not match this MCP server.");
   }
   if (!payload.scope.split(/\s+/).includes(OAUTH_SCOPE)) {
@@ -208,21 +223,24 @@ export async function verifyBugcrowdCredentials(
   return { username, authenticated: true };
 }
 
-export function protectedResourceMetadata() {
+export function protectedResourceMetadata(origin?: string) {
+  const issuer = oauthIssuerForOrigin(origin);
+  const resource = oauthResourceForOrigin(origin);
   return {
-    resource: OAUTH_RESOURCE,
-    authorization_servers: [OAUTH_ISSUER],
+    resource,
+    authorization_servers: [issuer],
     scopes_supported: [OAUTH_SCOPE, OFFLINE_SCOPE],
     bearer_methods_supported: ["header"],
-    resource_documentation: `${OAUTH_ISSUER}/`,
+    resource_documentation: `${issuer}/`,
   };
 }
 
-export function authorizationServerMetadata() {
+export function authorizationServerMetadata(origin?: string) {
+  const issuer = oauthIssuerForOrigin(origin);
   return {
-    issuer: OAUTH_ISSUER,
-    authorization_endpoint: `${OAUTH_ISSUER}/oauth/authorize`,
-    token_endpoint: `${OAUTH_ISSUER}/oauth/token`,
+    issuer,
+    authorization_endpoint: `${issuer}/oauth/authorize`,
+    token_endpoint: `${issuer}/oauth/token`,
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
@@ -230,6 +248,6 @@ export function authorizationServerMetadata() {
     token_endpoint_auth_methods_supported: ["none"],
     client_id_metadata_document_supported: true,
     authorization_response_iss_parameter_supported: true,
-    service_documentation: `${OAUTH_ISSUER}/`,
+    service_documentation: `${issuer}/`,
   };
 }
