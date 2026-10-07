@@ -1,6 +1,6 @@
 import {
-  OAUTH_ISSUER,
-  OAUTH_RESOURCE,
+  oauthIssuerForOrigin,
+  oauthResourceForOrigin,
   createAuthorizationCode,
   isAllowedClientId,
   isAllowedRedirectUri,
@@ -23,7 +23,7 @@ type OAuthFields = {
   scope: string;
 };
 
-function validate(fields: OAuthFields) {
+function validate(fields: OAuthFields, origin: string) {
   if (fields.response_type !== "code") {
     return "Only response_type=code is supported.";
   }
@@ -36,7 +36,7 @@ function validate(fields: OAuthFields) {
   if (!fields.code_challenge || fields.code_challenge_method !== "S256") {
     return "PKCE S256 is required.";
   }
-  if (fields.resource !== OAUTH_RESOURCE) {
+  if (fields.resource !== oauthResourceForOrigin(origin)) {
     return "OAuth resource does not match this MCP server.";
   }
   return null;
@@ -131,9 +131,10 @@ function authorizationPage(fields: OAuthFields, error?: string) {
 async function authorize(
   fields: OAuthFields,
   apiKey: string,
-  apiSecret: string
+  apiSecret: string,
+  origin: string
 ) {
-  const validationError = validate(fields);
+  const validationError = validate(fields, origin);
   if (validationError) {
     return Response.json(
       { error: "invalid_request", error_description: validationError },
@@ -167,14 +168,16 @@ async function authorize(
   const redirect = new URL(fields.redirect_uri);
   redirect.searchParams.set("code", code);
   if (fields.state) redirect.searchParams.set("state", fields.state);
-  redirect.searchParams.set("iss", OAUTH_ISSUER);
+  redirect.searchParams.set("iss", oauthIssuerForOrigin(origin));
 
   return Response.redirect(redirect.toString(), 302);
 }
 
 export async function GET(request: Request) {
-  const fields = fieldsFromUrl(new URL(request.url));
-  const validationError = validate(fields);
+  const requestUrl = new URL(request.url);
+  const origin = requestUrl.origin;
+  const fields = fieldsFromUrl(requestUrl);
+  const validationError = validate(fields, origin);
 
   if (validationError) {
     return Response.json(
@@ -191,13 +194,14 @@ export async function GET(request: Request) {
     envKey &&
     envSecret
   ) {
-    return authorize(fields, envKey, envSecret);
+    return authorize(fields, envKey, envSecret, origin);
   }
 
   return authorizationPage(fields);
 }
 
 export async function POST(request: Request) {
+  const origin = new URL(request.url).origin;
   const form = await request.formData();
 
   const fields: OAuthFields = {
@@ -216,6 +220,7 @@ export async function POST(request: Request) {
   return authorize(
     fields,
     String(form.get("api_key") || "").trim(),
-    String(form.get("api_secret") || "").trim()
+    String(form.get("api_secret") || "").trim(),
+    origin
   );
 }
