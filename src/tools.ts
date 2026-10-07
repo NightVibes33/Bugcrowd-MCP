@@ -363,3 +363,73 @@ export function registerBugcrowdTools(
       bugcrowdApiRequest({ method, path, query, body, version })
   );
 }
+
+
+export function registerBugcrowdResearcherTools(server: any) {
+  server.registerTool(
+    "get_researcher_login",
+    {
+      title: "Open Bugcrowd Researcher Login",
+      description:
+        "Return Bugcrowd's official researcher sign-in URL and the supported browser-session model. This tool never asks for Bugcrowd API credentials, passwords, passkeys, 2FA codes, or session cookies.",
+      inputSchema: z.object({}),
+      securitySchemes: [{ type: "noauth" }],
+      _meta: {
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async () =>
+      jsonResult({
+        mode: "researcher_browser_session",
+        login_url: "https://login.hackers.bugcrowd.com/",
+        account_portal: "https://bugcrowd.com/",
+        authentication:
+          "Sign in directly on Bugcrowd and complete the account's configured MFA/2FA in the browser.",
+        api_credentials_required: false,
+        credentials_collected_by_mcp: false,
+        session_cookie_shared_with_mcp: false,
+        note:
+          "This researcher MCP endpoint is intentionally no-auth. Private researcher-account navigation must use the authenticated Bugcrowd browser session; API-token tools live on the separate /api/mcp-api endpoint.",
+      })
+  );
+
+  server.registerTool(
+    "get_public_engagement",
+    {
+      title: "Get Public Engagement",
+      description:
+        "Fetch a public Bugcrowd engagement page by slug without authentication. Use this for public policy, scope, rewards, targets, and submission requirements.",
+      inputSchema: z.object({
+        slug: z
+          .string()
+          .min(1)
+          .describe(
+            "Public Bugcrowd engagement slug from /engagements/<slug>, for example openai."
+          ),
+      }),
+      securitySchemes: [{ type: "noauth" }],
+      _meta: {
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({ slug }: { slug: string }) => {
+      try {
+        return jsonResult(await getPublicEngagement(slug));
+      } catch (error) {
+        return defaultError(error);
+      }
+    }
+  );
+}
