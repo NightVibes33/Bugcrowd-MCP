@@ -2,12 +2,12 @@ import { createMcpHandler } from "mcp-handler";
 import { registerBugcrowdTools } from "../../../src/tools";
 import { runWithBugcrowdCredentials } from "../../../src/request-auth";
 import {
-  OAUTH_RESOURCE,
-  PROTECTED_RESOURCE_METADATA_URL,
+  oauthResourceForOrigin,
+  protectedResourceMetadataUrlForOrigin,
   resolveAccessToken,
 } from "../../../src/oauth";
 
-function toolError(error: unknown) {
+function toolError(error: unknown, resourceMetadataUrl: string) {
   const message = error instanceof Error ? error.message : String(error);
   const authRequired = message.includes(
     "Missing BUGCROWD_API_USERNAME or BUGCROWD_API_PASSWORD environment variables"
@@ -16,7 +16,7 @@ function toolError(error: unknown) {
   if (authRequired) {
     const challenge =
       'Bearer resource_metadata="' +
-      PROTECTED_RESOURCE_METADATA_URL +
+      resourceMetadataUrl +
       '", scope="bugcrowd", error="invalid_token", error_description="Connect your Bugcrowd API credentials to continue."';
 
     return {
@@ -44,17 +44,21 @@ function toolError(error: unknown) {
   };
 }
 
-const handler = createMcpHandler(
-  (server) => {
-    registerBugcrowdTools(server, toolError);
-  },
-  {
-    serverInfo: {
-      name: "bugcrowd-mcp-server",
-      version: "2.0.0",
+function createHandler(resourceMetadataUrl: string) {
+  return createMcpHandler(
+    (server) => {
+      registerBugcrowdTools(server, (error) =>
+        toolError(error, resourceMetadataUrl)
+      );
     },
-  }
-);
+    {
+      serverInfo: {
+        name: "bugcrowd-mcp-server",
+        version: "2.0.0",
+      },
+    }
+  );
+}
 
 function getBasicCredentials(request: Request) {
   const auth = request.headers.get("authorization");
@@ -76,12 +80,14 @@ function getBasicCredentials(request: Request) {
 }
 
 function oauthChallenge(
+  resourceMetadataUrl: string,
+  resource: string,
   error = "invalid_token",
   description = "Connect your Bugcrowd API credentials with OAuth to continue."
 ) {
   const challenge =
     'Bearer resource_metadata="' +
-    PROTECTED_RESOURCE_METADATA_URL +
+    resourceMetadataUrl +
     '", scope="bugcrowd", error="' +
     error.replace(/"/g, "") +
     '", error_description="' +
@@ -92,7 +98,7 @@ function oauthChallenge(
     JSON.stringify({
       error: "oauth_required",
       error_description: description,
-      resource: OAUTH_RESOURCE,
+      resource,
     }),
     {
       status: 401,
@@ -106,15 +112,21 @@ function oauthChallenge(
 }
 
 async function securedHandler(request: Request) {
+  const origin = new URL(request.url).origin;
+  const resource = oauthResourceForOrigin(origin);
+  const resourceMetadataUrl = protectedResourceMetadataUrlForOrigin(origin);
+  const handler = createHandler(resourceMetadataUrl);
   const authorization = request.headers.get("authorization") ?? "";
 
   if (authorization.toLowerCase().startsWith("bearer ")) {
     try {
       const accessToken = authorization.slice(7).trim();
-      const credentials = await resolveAccessToken(accessToken);
+      const credentials = await resolveAccessToken(accessToken, resource);
       return runWithBugcrowdCredentials(credentials, () => handler(request));
     } catch (error: any) {
       return oauthChallenge(
+        resourceMetadataUrl,
+        resource,
         "invalid_token",
         error?.message || "The OAuth access token is invalid or expired."
       );
