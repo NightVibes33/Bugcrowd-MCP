@@ -111,6 +111,39 @@ export function registerBugcrowdTools(
   };
 
   server.registerTool(
+    "get_researcher_login",
+    {
+      title: "Open Bugcrowd Researcher Login",
+      description:
+        "Return Bugcrowd's official researcher sign-in URL and the supported session model. This does not collect credentials, passwords, passkeys, 2FA codes, or Bugcrowd session cookies. Use this when a researcher wants to sign in to their real Bugcrowd account. Private researcher-account actions require an authenticated browser session; Bugcrowd does not expose a documented researcher OAuth handoff to this MCP.",
+      inputSchema: z.object({}),
+      securitySchemes: [{ type: "noauth" }],
+      _meta: {
+        securitySchemes: [{ type: "noauth" }],
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async () =>
+      jsonResult({
+        mode: "researcher_browser_session",
+        login_url: "https://login.hackers.bugcrowd.com/",
+        account_portal: "https://bugcrowd.com/",
+        authentication: "Bugcrowd web login with the account's configured MFA/2FA",
+        credentials_collected_by_mcp: false,
+        session_cookie_shared_with_mcp: false,
+        private_account_access:
+          "Use an authenticated browser session (for example ChatGPT Work browser control) and complete Bugcrowd login/2FA directly on Bugcrowd. The MCP cannot legitimately receive or replay the Bugcrowd researcher web session because Bugcrowd does not expose a documented researcher OAuth callback.",
+        api_note:
+          "Bugcrowd API tools are separate and require Bugcrowd API credentials on accounts where Bugcrowd exposes API Credentials.",
+      })
+  );
+
+  server.registerTool(
     "get_public_engagement",
     {
       title: "Get Public Engagement",
@@ -147,7 +180,7 @@ export function registerBugcrowdTools(
 
   registerAuthenticated(
     "list_programs",
-    "List Bugcrowd programs available to the connected API credentials. Supports JSON:API filters/includes/fields and page controls.",
+    "API-only: list Bugcrowd programs available to Bugcrowd API credentials. Standard researcher accounts may not expose API Credentials; for public researcher program data use get_public_engagement instead.",
     {
       limit: z.number().int().min(1).max(100).optional(),
       offset: z.number().int().min(0).optional(),
@@ -159,7 +192,7 @@ export function registerBugcrowdTools(
 
   registerAuthenticated(
     "get_program",
-    "Get one Bugcrowd program by API resource ID.",
+    "API-only: get one Bugcrowd program by API resource ID. Requires an account where Bugcrowd exposes API Credentials.",
     {
       program_id: z.string().min(1),
       query: querySchema,
@@ -169,7 +202,7 @@ export function registerBugcrowdTools(
 
   registerAuthenticated(
     "list_engagements",
-    "List Bugcrowd engagements visible to the connected API credentials. Use filters/includes to resolve an engagement, its program, and submission configuration.",
+    "API-only: list engagements visible to Bugcrowd API credentials. This is not a researcher web-session endpoint.",
     {
       limit: z.number().int().min(1).max(100).optional(),
       offset: z.number().int().min(0).optional(),
@@ -215,7 +248,7 @@ export function registerBugcrowdTools(
 
   registerAuthenticated(
     "list_submissions",
-    "List Bugcrowd submissions visible to the connected API credentials with JSON:API filtering, includes, fields, and pagination.",
+    "API-only: list submissions visible to Bugcrowd API credentials. Standard researcher web sessions are not accepted by this MCP.",
     {
       limit: z.number().int().min(1).max(100).optional(),
       offset: z.number().int().min(0).optional(),
@@ -248,7 +281,7 @@ export function registerBugcrowdTools(
 
   registerAuthenticated(
     "get_submission_with_conversation",
-    "Get a Bugcrowd submission plus its activities and comments in one call. Useful for reviewing triage history and prior responses.",
+    "API-only: get a submission plus activities and comments using Bugcrowd API credentials. For a researcher account without API access, use the authenticated Bugcrowd website in a browser session.",
     {
       submission_id: z.string().min(1),
     },
@@ -257,7 +290,7 @@ export function registerBugcrowdTools(
 
   registerAuthenticated(
     "create_submission",
-    "Create a submission using the official Bugcrowd API when the connected API credentials have permission. Pass the complete documented JSON:API request body; this tool does not invent researcher-portal-only fields or bypass account eligibility.",
+    "API-only: create a submission using the official Bugcrowd API when the connected API credentials have permission. This does not substitute for the researcher website and does not accept researcher session cookies.",
     {
       payload: z.any().describe(
         "Complete Bugcrowd JSON:API request body for POST /submissions."
