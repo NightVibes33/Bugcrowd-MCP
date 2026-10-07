@@ -1,0 +1,308 @@
+import { z } from "zod";
+import {
+  bugcrowdApiRequest,
+  createSubmission,
+  getEngagement,
+  getProgram,
+  getPublicEngagement,
+  getSubmission,
+  getSubmissionWithConversation,
+  listEngagements,
+  listMonetaryRewards,
+  listPayments,
+  listPrograms,
+  listSubmissions,
+  listTargetGroups,
+  listTargets,
+  searchSubmissions,
+  updateSubmission,
+} from "./bugcrowd-client";
+
+type ToolResult = {
+  content: Array<{ type: "text"; text: string }>;
+  isError?: boolean;
+  _meta?: Record<string, unknown>;
+};
+
+type ErrorFormatter = (error: unknown) => ToolResult;
+
+const defaultError: ErrorFormatter = (error) => ({
+  content: [
+    {
+      type: "text" as const,
+      text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    },
+  ],
+  isError: true,
+});
+
+function jsonResult(value: unknown): ToolResult {
+  const failed =
+    typeof value === "object" &&
+    value !== null &&
+    "ok" in value &&
+    (value as { ok?: boolean }).ok === false;
+
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(value, null, 2),
+      },
+    ],
+    ...(failed ? { isError: true } : {}),
+  };
+}
+
+const querySchema = z
+  .record(
+    z.string(),
+    z.union([
+      z.string(),
+      z.number(),
+      z.boolean(),
+      z.array(z.union([z.string(), z.number(), z.boolean()])),
+    ])
+  )
+  .optional()
+  .describe(
+    "Optional Bugcrowd query parameters. Use bracketed JSON:API keys such as filter[state], include, fields[submission], page[limit], or page[offset]."
+  );
+
+export function registerBugcrowdTools(
+  server: any,
+  formatError: ErrorFormatter = defaultError
+) {
+  const registerAuthenticated = (
+    name: string,
+    description: string,
+    inputSchema: Record<string, z.ZodTypeAny>,
+    handler: (params: any) => Promise<unknown>
+  ) => {
+    server.registerTool(
+      name,
+      {
+        description,
+        inputSchema: z.object(inputSchema),
+        _meta: {
+          securitySchemes: [{ type: "oauth2", scopes: ["bugcrowd"] }],
+        },
+      },
+      async (params: any) => {
+        try {
+          return jsonResult(await handler(params));
+        } catch (error) {
+          return formatError(error);
+        }
+      }
+    );
+  };
+
+  server.registerTool(
+    "get_public_engagement",
+    {
+      description:
+        "Fetch a public Bugcrowd engagement page by slug without account authentication. Use this first for public bounty policy/scope context such as slug 'openai'.",
+      inputSchema: z.object({
+        slug: z
+          .string()
+          .min(1)
+          .describe(
+            "Public Bugcrowd engagement slug from /engagements/<slug>, for example openai."
+          ),
+      }),
+    },
+    async ({ slug }: { slug: string }) => {
+      try {
+        return jsonResult(await getPublicEngagement(slug));
+      } catch (error) {
+        return defaultError(error);
+      }
+    }
+  );
+
+  registerAuthenticated(
+    "list_programs",
+    "List Bugcrowd programs available to the connected API credentials. Supports JSON:API filters/includes/fields and page controls.",
+    {
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+      query: querySchema,
+    },
+    ({ limit, offset, query }) =>
+      listPrograms(limit ?? 25, offset ?? 0, query)
+  );
+
+  registerAuthenticated(
+    "get_program",
+    "Get one Bugcrowd program by API resource ID.",
+    {
+      program_id: z.string().min(1),
+      query: querySchema,
+    },
+    ({ program_id, query }) => getProgram(program_id, query)
+  );
+
+  registerAuthenticated(
+    "list_engagements",
+    "List Bugcrowd engagements visible to the connected API credentials. Use filters/includes to resolve an engagement, its program, and submission configuration.",
+    {
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+      query: querySchema,
+    },
+    ({ limit, offset, query }) =>
+      listEngagements(limit ?? 25, offset ?? 0, query)
+  );
+
+  registerAuthenticated(
+    "get_engagement",
+    "Get one Bugcrowd engagement by API resource ID.",
+    {
+      engagement_id: z.string().min(1),
+      query: querySchema,
+    },
+    ({ engagement_id, query }) => getEngagement(engagement_id, query)
+  );
+
+  registerAuthenticated(
+    "list_targets",
+    "List Bugcrowd targets/assets visible to the connected API credentials. Use filters to narrow to the intended engagement or target group before testing or reporting.",
+    {
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+      query: querySchema,
+    },
+    ({ limit, offset, query }) =>
+      listTargets(limit ?? 50, offset ?? 0, query)
+  );
+
+  registerAuthenticated(
+    "list_target_groups",
+    "List Bugcrowd target groups visible to the connected API credentials.",
+    {
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+      query: querySchema,
+    },
+    ({ limit, offset, query }) =>
+      listTargetGroups(limit ?? 50, offset ?? 0, query)
+  );
+
+  registerAuthenticated(
+    "list_submissions",
+    "List Bugcrowd submissions visible to the connected API credentials with JSON:API filtering, includes, fields, and pagination.",
+    {
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+      query: querySchema,
+    },
+    ({ limit, offset, query }) =>
+      listSubmissions(limit ?? 25, offset ?? 0, query)
+  );
+
+  registerAuthenticated(
+    "search_submissions",
+    "Use Bugcrowd API v1.1.0 POST /submissions/search. Pass the documented request payload unchanged so advanced server-side search/filter semantics are preserved.",
+    {
+      payload: z.any().describe(
+        "Complete request body documented for POST /submissions/search."
+      ),
+    },
+    ({ payload }) => searchSubmissions(payload)
+  );
+
+  registerAuthenticated(
+    "get_submission",
+    "Get one Bugcrowd submission by API resource ID.",
+    {
+      submission_id: z.string().min(1),
+      query: querySchema,
+    },
+    ({ submission_id, query }) => getSubmission(submission_id, query)
+  );
+
+  registerAuthenticated(
+    "get_submission_with_conversation",
+    "Get a Bugcrowd submission plus its activities and comments in one call. Useful for reviewing triage history and prior responses.",
+    {
+      submission_id: z.string().min(1),
+    },
+    ({ submission_id }) => getSubmissionWithConversation(submission_id)
+  );
+
+  registerAuthenticated(
+    "create_submission",
+    "Create a submission using the official Bugcrowd API when the connected API credentials have permission. Pass the complete documented JSON:API request body; this tool does not invent researcher-portal-only fields or bypass account eligibility.",
+    {
+      payload: z.any().describe(
+        "Complete Bugcrowd JSON:API request body for POST /submissions."
+      ),
+    },
+    ({ payload }) => createSubmission(payload)
+  );
+
+  registerAuthenticated(
+    "update_submission",
+    "Update a Bugcrowd submission using the official API when the connected credentials and submission state allow it.",
+    {
+      submission_id: z.string().min(1),
+      payload: z.any().describe(
+        "Complete Bugcrowd JSON:API request body for PATCH /submissions/{id}."
+      ),
+    },
+    ({ submission_id, payload }) =>
+      updateSubmission(submission_id, payload)
+  );
+
+  registerAuthenticated(
+    "list_monetary_rewards",
+    "List Bugcrowd monetary rewards. Bugcrowd v1.1.0 can include funding-pool relationships when requested by the API.",
+    {
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+      query: querySchema,
+    },
+    ({ limit, offset, query }) =>
+      listMonetaryRewards(limit ?? 25, offset ?? 0, query)
+  );
+
+  registerAuthenticated(
+    "list_payments",
+    "List Bugcrowd payments visible to the connected API credentials.",
+    {
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+      query: querySchema,
+    },
+    ({ limit, offset, query }) =>
+      listPayments(limit ?? 25, offset ?? 0, query)
+  );
+
+  registerAuthenticated(
+    "bugcrowd_api_request",
+    "Full-fidelity escape hatch for current documented Bugcrowd REST API operations that do not yet have a curated tool. Requires a relative api.bugcrowd.com path and never accepts an arbitrary host.",
+    {
+      method: z
+        .enum(["GET", "POST", "PUT", "PATCH", "DELETE"])
+        .optional()
+        .default("GET"),
+      path: z
+        .string()
+        .min(1)
+        .describe(
+          "Relative Bugcrowd API path beginning with /, e.g. /submissions/search."
+        ),
+      query: querySchema,
+      body: z.any().optional(),
+      version: z
+        .string()
+        .optional()
+        .describe(
+          "Optional Bugcrowd-Version header. Omit for the current V1 contract unless a pinned version is specifically required."
+        ),
+    },
+    ({ method, path, query, body, version }) =>
+      bugcrowdApiRequest({ method, path, query, body, version })
+  );
+}
