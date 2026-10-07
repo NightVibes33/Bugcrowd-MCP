@@ -1,5 +1,5 @@
 import {
-  OAUTH_RESOURCE,
+  oauthResourceForOrigin,
   consumeAuthorizationCode,
   consumeRefreshToken,
   createAccessToken,
@@ -28,6 +28,7 @@ function oauthError(error: string, description: string, status = 400) {
 }
 
 export async function POST(request: Request) {
+  const expectedResource = oauthResourceForOrigin(new URL(request.url).origin);
   const form = await request.formData();
   const grantType = String(form.get("grant_type") || "");
   const clientId = String(form.get("client_id") || "");
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
       }
 
       if (
-        payload.resource !== OAUTH_RESOURCE ||
+        payload.resource !== expectedResource ||
         resource !== payload.resource
       ) {
         return oauthError(
@@ -140,7 +141,7 @@ export async function POST(request: Request) {
       }
 
       if (
-        payload.resource !== OAUTH_RESOURCE ||
+        payload.resource !== expectedResource ||
         (resource && resource !== payload.resource)
       ) {
         return oauthError(
