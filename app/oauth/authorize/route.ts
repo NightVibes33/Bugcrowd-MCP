@@ -81,7 +81,7 @@ function authorizationPage(fields: OAuthFields, error?: string) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Connect Bugcrowd</title>
+  <title>Connect Bugcrowd API</title>
   <style>
     :root { color-scheme: dark; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
     * { box-sizing: border-box; }
@@ -100,8 +100,8 @@ function authorizationPage(fields: OAuthFields, error?: string) {
 </head>
 <body>
 <main>
-  <h1>Connect Bugcrowd</h1>
-  <p>Authorize ChatGPT using a Bugcrowd API key and API secret. The secret is verified directly with <code>api.bugcrowd.com</code>, stored only server-side for the OAuth grant, and is never returned to ChatGPT.</p>
+  <h1>Connect Bugcrowd API</h1>
+  <p>This connection is only for Bugcrowd accounts that expose official API Credentials. It is not the normal Bugcrowd researcher sign-in. Standard researcher login must happen directly on Bugcrowd in an authenticated browser session. API secrets are verified directly with <code>api.bugcrowd.com</code>, stored only server-side for this API connection, and are never returned to ChatGPT.</p>
   ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
   <form method="post" action="/oauth/authorize" autocomplete="off">
     ${hidden}
@@ -111,7 +111,7 @@ function authorizationPage(fields: OAuthFields, error?: string) {
     <input id="api_secret" name="api_secret" type="password" required>
     <button type="submit">Verify & authorize ChatGPT</button>
   </form>
-  <p class="small">Bugcrowd uses API token credentials rather than a public third-party OAuth authorization endpoint. Create/manage API credentials in your Bugcrowd account, then enter them here.</p>
+  <p class="small">If your Bugcrowd account does not show API Credentials, do not enter your normal Bugcrowd password here. Use the official researcher login flow instead.</p>
   <p class="small"><a href="https://docs.bugcrowd.com/api/getting-started/" target="_blank" rel="noreferrer">Bugcrowd API authentication documentation</a></p>
 </main>
 </body>
